@@ -6,329 +6,183 @@ use std::io::prelude::*;
 use std::{fs::File, todo};
 
 fn read_input_content() -> Result<String> {
-    let path = "/home/light4/playground/adventofcode_2020/data/day11.txt";
+    let path = "/home/light4/playground/adventofcode_2020/data/day12.txt";
     let mut file = File::open(path)?;
     let mut content = String::new();
     file.read_to_string(&mut content)?;
     Ok(content)
 }
+#[derive(Debug, Eq, PartialEq)]
+enum Direct {
+    East,
+    North,
+    West,
+    South,
+}
 
 #[derive(Debug, Eq, PartialEq)]
-enum Grid {
-    Floor,
-    EmptySeat,
-    OccupiedSeat,
+struct Direction {
+    direct: Direct,
+    coordinate: (isize, isize),
+}
+
+impl Default for Direction {
+    fn default() -> Self {
+        Direction::new(Direct::East)
+    }
+}
+
+impl Direction {
+    fn new(direct: Direct) -> Self {
+        let coordinate = match direct {
+            Direct::East => (1, 0),
+            Direct::North => (0, 1),
+            Direct::West => (-1, 0),
+            Direct::South => (0, -1),
+        };
+        Self { direct, coordinate }
+    }
+
+    fn turn_left(&self) -> Self {
+        match self.direct {
+            Direct::East => Direction::new(Direct::North),
+            Direct::North => Direction::new(Direct::West),
+            Direct::West => Direction::new(Direct::South),
+            Direct::South => Direction::new(Direct::East),
+        }
+    }
+
+    fn turn_right(&self) -> Self {
+        match self.direct {
+            Direct::East => Direction::new(Direct::South),
+            Direct::North => Direction::new(Direct::East),
+            Direct::West => Direction::new(Direct::North),
+            Direct::South => Direction::new(Direct::West),
+        }
+    }
 }
 
 #[derive(Debug, Eq, PartialEq)]
-struct SeatLayout {
-    layout: Vec<Vec<Grid>>,
-    row_length: usize,
-    column_length: usize,
+enum Action {
+    N(isize),
+    S(isize),
+    E(isize),
+    W(isize),
+    L(isize),
+    R(isize),
+    F(isize),
 }
 
-impl fmt::Display for SeatLayout {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut s = String::new();
-        for row in &self.layout {
-            for c in row {
-                match c {
-                    Grid::Floor => s.push('.'),
-                    Grid::EmptySeat => s.push('L'),
-                    Grid::OccupiedSeat => s.push('#'),
-                }
-            }
-            s.push('\n');
-        }
-        write!(f, "{}", s)
-    }
+#[derive(Debug, Default, Eq, PartialEq)]
+struct Status {
+    actions: Vec<Action>,
+    direction: Direction,
+    location: (isize, isize),
+    pc: usize,
 }
 
-impl SeatLayout {
-    pub fn new(layout: Vec<Vec<Grid>>) -> SeatLayout {
-        let row_length = layout.len();
-        let mut column_length = 0;
-        if let Some(row) = layout.get(0) {
-            column_length = row.len()
-        }
-        SeatLayout {
-            layout,
-            row_length,
-            column_length,
+impl Status {
+    pub fn new(actions: Vec<Action>) -> Status {
+        Status {
+            actions,
+            ..Default::default()
         }
     }
 
-    pub fn transform_index(&self, i: usize, j: usize) -> Grid {
-        let idx = &self.layout[i][j];
-        match idx {
-            Grid::Floor => Grid::Floor,
-            Grid::EmptySeat => {
-                if self.adjacents(i, j) == 0 {
-                    Grid::OccupiedSeat
-                } else {
-                    Grid::EmptySeat
+    fn run_once(&mut self) {
+        match self.actions[self.pc] {
+            Action::F(i) => {
+                self.location.0 += i * self.direction.coordinate.0;
+                self.location.1 += i * self.direction.coordinate.1;
+            }
+            Action::L(i) => {
+                for _ in 0..(i / 90) {
+                    self.direction = self.direction.turn_left();
                 }
             }
-            Grid::OccupiedSeat => {
-                if self.adjacents(i, j) >= 4 {
-                    Grid::EmptySeat
-                } else {
-                    Grid::OccupiedSeat
+            Action::R(i) => {
+                for _ in 0..(i / 90) {
+                    self.direction = self.direction.turn_right();
                 }
             }
+            Action::N(i) => {
+                let move_direction = Direction::new(Direct::North);
+                self.location.0 += i * move_direction.coordinate.0;
+                self.location.1 += i * move_direction.coordinate.1;
+            }
+            Action::S(i) => {
+                let move_direction = Direction::new(Direct::South);
+                self.location.0 += i * move_direction.coordinate.0;
+                self.location.1 += i * move_direction.coordinate.1;
+            }
+            Action::E(i) => {
+                let move_direction = Direction::new(Direct::East);
+                self.location.0 += i * move_direction.coordinate.0;
+                self.location.1 += i * move_direction.coordinate.1;
+            }
+            Action::W(i) => {
+                let move_direction = Direction::new(Direct::West);
+                self.location.0 += i * move_direction.coordinate.0;
+                self.location.1 += i * move_direction.coordinate.1;
+            }
+        }
+        self.pc += 1;
+    }
+
+    fn run(&mut self) {
+        for _ in 0..self.actions.len() {
+            self.run_once()
         }
     }
 
-    pub fn new_transform_index(&self, i: usize, j: usize) -> Grid {
-        let idx = &self.layout[i][j];
-        match idx {
-            Grid::Floor => Grid::Floor,
-            Grid::EmptySeat => {
-                if self.new_adjacents(i, j) == 0 {
-                    Grid::OccupiedSeat
-                } else {
-                    Grid::EmptySeat
-                }
-            }
-            Grid::OccupiedSeat => {
-                if self.new_adjacents(i, j) >= 5 {
-                    Grid::EmptySeat
-                } else {
-                    Grid::OccupiedSeat
-                }
-            }
-        }
-    }
-
-    pub fn adjacents(&self, i: usize, j: usize) -> usize {
-        let mut adjacents = 0;
-        let i_start = if i == 0 { 0 } else { i - 1 };
-        let i_end = min(i + 1, self.row_length - 1);
-        let j_start = if j == 0 { 0 } else { j - 1 };
-        let j_end = min(j + 1, self.column_length - 1);
-
-        for x in i_start..=i_end {
-            for y in j_start..=j_end {
-                if i != x || j != y {
-                    if let Some(m) = self.layout.get(x) {
-                        if let Some(n) = m.get(y) {
-                            match n {
-                                Grid::OccupiedSeat => adjacents += 1,
-                                _ => (),
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        adjacents
-    }
-
-    pub fn new_adjacents(&self, i: usize, j: usize) -> usize {
-        let mut adjacents = 0;
-
-        // 左上
-        'outer_0: for x in (0..i).rev() {
-            for y in (0..j).rev() {
-                if i + y == j + x {
-                    match self.layout[x][y] {
-                        Grid::OccupiedSeat => {
-                            adjacents += 1;
-                            break 'outer_0;
-                        }
-                        Grid::EmptySeat => break 'outer_0,
-                        _ => (),
-                    }
-                }
-            }
-        }
-        // dbg!("after left top", adjacents);
-
-        // 上
-        for x in (0..i).rev() {
-            match self.layout[x][j] {
-                Grid::OccupiedSeat => {
-                    adjacents += 1;
-                    break;
-                }
-                Grid::EmptySeat => break,
-                _ => (),
-            }
-        }
-        // dbg!("after top", adjacents);
-
-        // 右上
-        'outer_1: for x in (0..i).rev() {
-            for y in min(j + 1, self.column_length)..self.column_length {
-                if x + y == i + j {
-                    match self.layout[x][y] {
-                        Grid::OccupiedSeat => {
-                            adjacents += 1;
-                            break 'outer_1;
-                        }
-                        Grid::EmptySeat => break 'outer_1,
-                        _ => (),
-                    }
-                }
-            }
-        }
-        // dbg!("after right top", adjacents);
-
-        // 右
-        for y in min(j + 1, self.column_length)..self.column_length {
-            match self.layout[i][y] {
-                Grid::OccupiedSeat => {
-                    adjacents += 1;
-                    break;
-                }
-                Grid::EmptySeat => break,
-                _ => (),
-            }
-        }
-        // dbg!("after right", adjacents);
-
-        // 右下
-        'outer_2: for x in min(i + 1, self.row_length)..self.row_length {
-            for y in min(j + 1, self.column_length)..self.column_length {
-                if i + y == j + x {
-                    match self.layout[x][y] {
-                        Grid::OccupiedSeat => {
-                            adjacents += 1;
-                            break 'outer_2;
-                        }
-                        Grid::EmptySeat => break 'outer_2,
-                        _ => (),
-                    }
-                }
-            }
-        }
-        // dbg!("after right down", adjacents);
-
-        // 下
-        for x in min(i + 1, self.row_length)..self.row_length {
-            match self.layout[x][j] {
-                Grid::OccupiedSeat => {
-                    adjacents += 1;
-                    break;
-                }
-                Grid::EmptySeat => break,
-                _ => (),
-            }
-        }
-        // dbg!("after down", adjacents);
-
-        // 左下
-        'outer_3: for x in min(i + 1, self.row_length)..self.row_length {
-            for y in (0..j).rev() {
-                if x + y == i + j {
-                    match self.layout[x][y] {
-                        Grid::OccupiedSeat => {
-                            adjacents += 1;
-                            break 'outer_3;
-                        }
-                        Grid::EmptySeat => break 'outer_3,
-                        _ => (),
-                    }
-                }
-            }
-        }
-        // dbg!("after left down", adjacents);
-
-        // 左
-        for y in (0..j).rev() {
-            match self.layout[i][y] {
-                Grid::OccupiedSeat => {
-                    adjacents += 1;
-                    break;
-                }
-                Grid::EmptySeat => break,
-                _ => (),
-            }
-        }
-        // dbg!("after left", adjacents);
-
-        adjacents
-    }
-
-    pub fn transform(&self) -> SeatLayout {
-        let mut result = vec![];
-        for i in 0..self.row_length {
-            let mut new_row = vec![];
-            for j in 0..self.column_length {
-                new_row.push(self.new_transform_index(i, j));
-            }
-            result.push(new_row);
-        }
-        SeatLayout::new(result)
-    }
-
-    pub fn transform_to_stable(&self) -> SeatLayout {
-        loop {
-            let new_seat = self.transform();
-            println!("{}", &new_seat);
-            if &new_seat == self {
-                break new_seat;
-            } else {
-                return new_seat.transform_to_stable();
-            }
-        }
-    }
-
-    pub fn occupied_seats(&self) -> usize {
-        let mut result = 0;
-        for i in 0..self.row_length {
-            for j in 0..self.column_length {
-                match self.layout[i][j] {
-                    Grid::OccupiedSeat => result += 1,
-                    _ => (),
-                }
-            }
-        }
-        result
+    fn manhattan_distance(&self) -> usize {
+        (self.location.0.abs() + self.location.1.abs()) as usize
     }
 }
 
-fn get_inputs(content: &str) -> SeatLayout {
-    let mut result = vec![];
+fn get_inputs(content: &str) -> Status {
+    let mut actions = vec![];
     for line in content.split("\n") {
         if line.len() <= 0 {
             continue;
         }
-        let mut row = vec![];
-        for c in line.chars() {
-            match c {
-                'L' => row.push(Grid::EmptySeat),
-                '.' => row.push(Grid::Floor),
-                '#' => row.push(Grid::OccupiedSeat),
-                _ => unreachable!(),
-            }
-        }
-        result.push(row);
+        let (c, num) = line.split_at(1);
+        let action = match c {
+            "N" => Action::N(num.parse().unwrap()),
+            "S" => Action::S(num.parse().unwrap()),
+            "E" => Action::E(num.parse().unwrap()),
+            "W" => Action::W(num.parse().unwrap()),
+            "L" => Action::L(num.parse().unwrap()),
+            "R" => Action::R(num.parse().unwrap()),
+            "F" => Action::F(num.parse().unwrap()),
+            _ => unreachable!(),
+        };
+        actions.push(action);
     }
-    SeatLayout::new(result)
-}
-
-fn part_one(inputs: &[usize]) -> usize {
-    todo!()
+    Status::new(actions)
 }
 
 fn main() -> Result<()> {
     let content = read_input_content()?;
+    //     let content = r#"
+    // F10
+    // N3
+    // F7
+    // R90
+    // F11
+    // "#;
 
-    let seat_layout = get_inputs(&content);
-    println!("{}", &seat_layout);
-
-    let new_seat = seat_layout.transform_to_stable();
-    println!("{}", &new_seat);
-
-    let occupied_seats = new_seat.occupied_seats();
-    println!("{}", occupied_seats);
+    let mut status = get_inputs(&content);
+    dbg!(&status);
+    status.run();
+    dbg!(&status);
+    dbg!(&status.manhattan_distance());
 
     Ok(())
 }
 
 mod test {
-    use crate::{get_inputs, part_one};
+    use crate::get_inputs;
 
     #[test]
     fn first_test() {
