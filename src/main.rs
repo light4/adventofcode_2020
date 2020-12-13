@@ -78,13 +78,15 @@ struct Status {
     actions: Vec<Action>,
     direction: Direction,
     location: (isize, isize),
+    waypoint: (isize, isize),
     pc: usize,
 }
 
 impl Status {
-    pub fn new(actions: Vec<Action>) -> Status {
+    pub fn new(actions: Vec<Action>, waypoint: (isize, isize)) -> Status {
         Status {
             actions,
+            waypoint,
             ..Default::default()
         }
     }
@@ -92,38 +94,50 @@ impl Status {
     fn run_once(&mut self) {
         match self.actions[self.pc] {
             Action::F(i) => {
-                self.location.0 += i * self.direction.coordinate.0;
-                self.location.1 += i * self.direction.coordinate.1;
+                self.location.0 += i * self.waypoint.0;
+                self.location.1 += i * self.waypoint.1;
             }
             Action::L(i) => {
-                for _ in 0..(i / 90) {
-                    self.direction = self.direction.turn_left();
-                }
+                // [cos, sin]
+                // [-sin, cos]
+                let coordinate = match (i / 90) % 4 {
+                    1 => (0, 1),
+                    2 => (-1, 0),
+                    3 => (0, -1),
+                    0 => (1, 0),
+                    _ => unreachable!(),
+                };
+                self.waypoint = (
+                    self.waypoint.0 * coordinate.0 + self.waypoint.1 * -coordinate.1,
+                    self.waypoint.0 * coordinate.1 + self.waypoint.1 * coordinate.0,
+                );
             }
             Action::R(i) => {
-                for _ in 0..(i / 90) {
-                    self.direction = self.direction.turn_right();
-                }
+                // [cos, -sin]
+                // [sin, cos]
+                let coordinate = match (i / 90) % 4 {
+                    1 => (0, 1),
+                    2 => (-1, 0),
+                    3 => (0, -1),
+                    0 => (1, 0),
+                    _ => unreachable!(),
+                };
+                self.waypoint = (
+                    self.waypoint.0 * coordinate.0 + self.waypoint.1 * coordinate.1,
+                    self.waypoint.0 * -coordinate.1 + self.waypoint.1 * coordinate.0,
+                );
             }
             Action::N(i) => {
-                let move_direction = Direction::new(Direct::North);
-                self.location.0 += i * move_direction.coordinate.0;
-                self.location.1 += i * move_direction.coordinate.1;
+                self.waypoint.1 += i;
             }
             Action::S(i) => {
-                let move_direction = Direction::new(Direct::South);
-                self.location.0 += i * move_direction.coordinate.0;
-                self.location.1 += i * move_direction.coordinate.1;
+                self.waypoint.1 += -i;
             }
             Action::E(i) => {
-                let move_direction = Direction::new(Direct::East);
-                self.location.0 += i * move_direction.coordinate.0;
-                self.location.1 += i * move_direction.coordinate.1;
+                self.waypoint.0 += i;
             }
             Action::W(i) => {
-                let move_direction = Direction::new(Direct::West);
-                self.location.0 += i * move_direction.coordinate.0;
-                self.location.1 += i * move_direction.coordinate.1;
+                self.waypoint.0 += -i;
             }
         }
         self.pc += 1;
@@ -131,7 +145,7 @@ impl Status {
 
     fn run(&mut self) {
         for _ in 0..self.actions.len() {
-            self.run_once()
+            self.run_once();
         }
     }
 
@@ -159,7 +173,9 @@ fn get_inputs(content: &str) -> Status {
         };
         actions.push(action);
     }
-    Status::new(actions)
+
+    let waypoint = (10, 1);
+    Status::new(actions, waypoint)
 }
 
 fn main() -> Result<()> {
@@ -169,8 +185,7 @@ fn main() -> Result<()> {
     // N3
     // F7
     // R90
-    // F11
-    // "#;
+    // F11"#;
 
     let mut status = get_inputs(&content);
     dbg!(&status);
@@ -186,93 +201,6 @@ mod test {
 
     #[test]
     fn first_test() {
-        let content = r#"
-L.LL.LL.LL
-LLLLLLL.LL
-L.L.L..L..
-LLLL.LL.LL
-L.LL.LL.LL
-L.LLLLL.LL
-..L.L.....
-LLLLLLLLLL
-L.LLLLLL.L
-L.LLLLL.LL
-"#;
-
-        let trans_once_content = r#"
-#.##.##.##
-#######.##
-#.#.#..#..
-####.##.##
-#.##.##.##
-#.#####.##
-..#.#.....
-##########
-#.######.#
-#.#####.##
-"#;
-
-        let trans_end_content = r#"
-#.#L.L#.##
-#LLL#LL.L#
-L.#.L..#..
-#L##.##.L#
-#.#L.LL.LL
-#.#L#L#.##
-..L.L.....
-#L#L##L#L#
-#.LLLLLL.L
-#.#L#L#.##
-"#;
-
-        let seat_layout = get_inputs(content);
-        assert_eq!(content.trim(), seat_layout.to_string().trim());
-        assert_eq!(
-            trans_once_content.trim(),
-            seat_layout.transform().to_string().trim()
-        );
-        let stable_layout = seat_layout.transform_to_stable();
-        assert_eq!(trans_end_content.trim(), stable_layout.to_string().trim());
-        assert_eq!(stable_layout.occupied_seats(), 37);
-        // assert_eq!(part_two(content), 8);
-    }
-
-    #[test]
-    fn test_new_adjacents() {
-        let first = r#"
-.......#.
-...#.....
-.#.......
-.........
-..#L....#
-....#....
-.........
-#........
-...#.....
-"#;
-        let first_seat_layout = get_inputs(first);
-        assert_eq!(first_seat_layout.new_adjacents(4, 3), 8);
-
-        let second = r#"
-.............
-.L.L.#.#.#.#.
-.............
-"#;
-        let second_seat_layout = get_inputs(second);
-        assert_eq!(second_seat_layout.new_adjacents(1, 1), 0);
-        assert_eq!(second_seat_layout.new_adjacents(1, 3), 1);
-
-        let third = r#"
-.##.##.
-#.#.#.#
-##...##
-...L...
-##...##
-#.#.#.#
-.##.##.
-"#;
-
-        let third_seat_layout = get_inputs(third);
-        assert_eq!(third_seat_layout.new_adjacents(3, 3), 0);
+        todo!()
     }
 }
