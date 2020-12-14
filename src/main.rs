@@ -2,205 +2,109 @@ use anyhow::Result;
 
 use std::cmp::{max, min};
 use std::fmt;
+use std::fs::File;
 use std::io::prelude::*;
-use std::{fs::File, todo};
 
 fn read_input_content() -> Result<String> {
-    let path = "/home/light4/playground/adventofcode_2020/data/day12.txt";
+    let path = "/home/light4/playground/adventofcode_2020/data/day13.txt";
     let mut file = File::open(path)?;
     let mut content = String::new();
     file.read_to_string(&mut content)?;
     Ok(content)
 }
-#[derive(Debug, Eq, PartialEq)]
-enum Direct {
-    East,
-    North,
-    West,
-    South,
-}
 
 #[derive(Debug, Eq, PartialEq)]
-struct Direction {
-    direct: Direct,
-    coordinate: (isize, isize),
+struct Note {
+    earliest_timestamp: usize,
+    bus_ids: Vec<usize>,
 }
 
-impl Default for Direction {
-    fn default() -> Self {
-        Direction::new(Direct::East)
-    }
-}
-
-impl Direction {
-    fn new(direct: Direct) -> Self {
-        let coordinate = match direct {
-            Direct::East => (1, 0),
-            Direct::North => (0, 1),
-            Direct::West => (-1, 0),
-            Direct::South => (0, -1),
-        };
-        Self { direct, coordinate }
-    }
-
-    fn turn_left(&self) -> Self {
-        match self.direct {
-            Direct::East => Direction::new(Direct::North),
-            Direct::North => Direction::new(Direct::West),
-            Direct::West => Direction::new(Direct::South),
-            Direct::South => Direction::new(Direct::East),
-        }
-    }
-
-    fn turn_right(&self) -> Self {
-        match self.direct {
-            Direct::East => Direction::new(Direct::South),
-            Direct::North => Direction::new(Direct::East),
-            Direct::West => Direction::new(Direct::North),
-            Direct::South => Direction::new(Direct::West),
+impl Note {
+    fn new(earliest_timestamp: usize, bus_ids: Vec<usize>) -> Self {
+        Self {
+            earliest_timestamp,
+            bus_ids,
         }
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
-enum Action {
-    N(isize),
-    S(isize),
-    E(isize),
-    W(isize),
-    L(isize),
-    R(isize),
-    F(isize),
+#[derive(Debug, Eq, PartialEq, Copy, Clone)]
+struct WaitOption {
+    bus_id: usize,
+    wait_time: usize,
 }
 
-#[derive(Debug, Default, Eq, PartialEq)]
-struct Status {
-    actions: Vec<Action>,
-    direction: Direction,
-    location: (isize, isize),
-    waypoint: (isize, isize),
-    pc: usize,
-}
-
-impl Status {
-    pub fn new(actions: Vec<Action>, waypoint: (isize, isize)) -> Status {
-        Status {
-            actions,
-            waypoint,
-            ..Default::default()
-        }
-    }
-
-    fn run_once(&mut self) {
-        match self.actions[self.pc] {
-            Action::F(i) => {
-                self.location.0 += i * self.waypoint.0;
-                self.location.1 += i * self.waypoint.1;
-            }
-            Action::L(i) => {
-                // [cos, sin]
-                // [-sin, cos]
-                let coordinate = match (i / 90) % 4 {
-                    1 => (0, 1),
-                    2 => (-1, 0),
-                    3 => (0, -1),
-                    0 => (1, 0),
-                    _ => unreachable!(),
-                };
-                self.waypoint = (
-                    self.waypoint.0 * coordinate.0 + self.waypoint.1 * -coordinate.1,
-                    self.waypoint.0 * coordinate.1 + self.waypoint.1 * coordinate.0,
-                );
-            }
-            Action::R(i) => {
-                // [cos, -sin]
-                // [sin, cos]
-                let coordinate = match (i / 90) % 4 {
-                    1 => (0, 1),
-                    2 => (-1, 0),
-                    3 => (0, -1),
-                    0 => (1, 0),
-                    _ => unreachable!(),
-                };
-                self.waypoint = (
-                    self.waypoint.0 * coordinate.0 + self.waypoint.1 * coordinate.1,
-                    self.waypoint.0 * -coordinate.1 + self.waypoint.1 * coordinate.0,
-                );
-            }
-            Action::N(i) => {
-                self.waypoint.1 += i;
-            }
-            Action::S(i) => {
-                self.waypoint.1 += -i;
-            }
-            Action::E(i) => {
-                self.waypoint.0 += i;
-            }
-            Action::W(i) => {
-                self.waypoint.0 += -i;
-            }
-        }
-        self.pc += 1;
-    }
-
-    fn run(&mut self) {
-        for _ in 0..self.actions.len() {
-            self.run_once();
-        }
-    }
-
-    fn manhattan_distance(&self) -> usize {
-        (self.location.0.abs() + self.location.1.abs()) as usize
+impl WaitOption {
+    fn new(bus_id: usize, wait_time: usize) -> Self {
+        Self { bus_id, wait_time }
     }
 }
 
-fn get_inputs(content: &str) -> Status {
-    let mut actions = vec![];
-    for line in content.split("\n") {
-        if line.len() <= 0 {
-            continue;
+fn get_inputs(content: &str) -> Note {
+    let mut bus_ids = vec![];
+    let mut lines = content.trim().split("\n");
+    let first_line = lines.next().unwrap();
+    let second_line = lines.next().unwrap();
+    let earliest_timestamp = first_line.trim().parse().unwrap();
+
+    for num in second_line.split(",") {
+        let n = num.parse();
+        if let Ok(bus_id) = n {
+            bus_ids.push(bus_id);
         }
-        let (c, num) = line.split_at(1);
-        let action = match c {
-            "N" => Action::N(num.parse().unwrap()),
-            "S" => Action::S(num.parse().unwrap()),
-            "E" => Action::E(num.parse().unwrap()),
-            "W" => Action::W(num.parse().unwrap()),
-            "L" => Action::L(num.parse().unwrap()),
-            "R" => Action::R(num.parse().unwrap()),
-            "F" => Action::F(num.parse().unwrap()),
-            _ => unreachable!(),
-        };
-        actions.push(action);
     }
 
-    let waypoint = (10, 1);
-    Status::new(actions, waypoint)
+    Note::new(earliest_timestamp, bus_ids)
+}
+
+fn get_wait_option(note: &Note) -> WaitOption {
+    let mut options = vec![];
+    for bus_id in &note.bus_ids {
+        let least_wait_time = (note.earliest_timestamp + bus_id - 1) / bus_id;
+        let wait_time = least_wait_time * bus_id - note.earliest_timestamp;
+        options.push(WaitOption::new(*bus_id, wait_time));
+    }
+    *options
+        .iter()
+        .min_by(|x, y| x.wait_time.cmp(&y.wait_time))
+        .unwrap()
+}
+
+fn part_one() -> usize {
+    todo!()
 }
 
 fn main() -> Result<()> {
     let content = read_input_content()?;
-    //     let content = r#"
-    // F10
-    // N3
-    // F7
-    // R90
-    // F11"#;
 
-    let mut status = get_inputs(&content);
-    dbg!(&status);
-    status.run();
-    dbg!(&status);
-    dbg!(&status.manhattan_distance());
+    let note = get_inputs(&content);
+    let wait_option = get_wait_option(&note);
+    let result = wait_option.wait_time * wait_option.bus_id;
+    dbg!(&result);
 
     Ok(())
 }
 
 mod test {
-    use crate::get_inputs;
+    use crate::{get_inputs, get_wait_option, Note, WaitOption};
 
     #[test]
     fn first_test() {
-        todo!()
+        let content = r#"
+939
+7,13,x,x,59,x,31,19
+"#;
+        let note = get_inputs(content);
+        assert_eq!(note, Note::new(939, vec![7, 13, 59, 31, 19]));
+        let wait_option = get_wait_option(&note);
+        assert_eq!(
+            wait_option,
+            WaitOption {
+                bus_id: 59,
+                wait_time: 5
+            }
+        );
+        let result = wait_option.wait_time * wait_option.bus_id;
+        assert_eq!(result, 295);
     }
 }
